@@ -1,7 +1,7 @@
 export const manifestJson = `{
   "manifest_version": 3,
   "name": "Scroll Print Area",
-  "version": "1.2",
+  "version": "1.3",
   "description": "Select an area, scroll to stretch, and release to copy a long screenshot to your clipboard.",
   "permissions": ["activeTab", "scripting", "clipboardWrite"],
   "host_permissions": ["<all_urls>"],
@@ -54,6 +54,7 @@ let startScrollX, startScrollY;
 let currentClientX, currentClientY;
 let isDrawing = false;
 let scrollInterval = null;
+let originalOverflow = null;
 
 function getScrollTop(el) { return el === document.scrollingElement ? window.scrollY : el.scrollTop; }
 function getScrollLeft(el) { return el === document.scrollingElement ? window.scrollX : el.scrollLeft; }
@@ -94,8 +95,18 @@ function cleanup() {
     const tt = document.getElementById('scroll-print-tooltip');
     if (tt) tt.remove();
     if (scrollInterval) clearInterval(scrollInterval);
+    
+    // Restore overflow if it was changed
+    if (scrollContainer && originalOverflow !== null) {
+        scrollContainer.style.overflow = originalOverflow;
+    }
+    
     overlay = selectionBox = null;
     scrollInterval = null;
+    scrollContainer = null;
+    originalOverflow = null;
+    isDrawing = false;
+    
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
     window.removeEventListener('scroll', onScroll, true);
@@ -216,7 +227,11 @@ function onMouseUp(e) {
         }
         
         if (selectionBox && parseFloat(selectionBox.style.width) > 10 && parseFloat(selectionBox.style.height) > 10) {
-            captureArea();
+            captureArea().catch(err => {
+                console.error("Capture failed:", err);
+                showTooltip("Error during capture.");
+                setTimeout(cleanup, 2000);
+            });
         } else {
             cleanup();
         }
@@ -254,84 +269,103 @@ async function captureArea() {
     let currentY = top;
     const viewHeight = scrollContainer === document.scrollingElement ? window.innerHeight : scrollContainer.clientHeight;
     
-    const originalOverflow = scrollContainer.style.overflow;
+    // Save original overflow and hide scrollbars during capture
+    originalOverflow = scrollContainer.style.overflow;
     scrollContainer.style.overflow = 'hidden';
     
-    while (currentY < bottom) {
-        setScrollTop(scrollContainer, currentY);
-        await new Promise(r => setTimeout(r, 400));
-        
-        const dataUrl = await new Promise(resolve => {
-            chrome.runtime.sendMessage({ action: 'take_screenshot' }, resolve);
-        });
-        
-        const actualScrollY = getScrollTop(scrollContainer);
-        const actualScrollX = getScrollLeft(scrollContainer);
-        
-        const currentRect = scrollContainer === document.scrollingElement 
-            ? { top: 0, left: 0, width: window.innerWidth, height: window.innerHeight }
-            : scrollContainer.getBoundingClientRect();
+    try {
+        while (currentY < bottom) {
+            setScrollTop(scrollContainer, currentY);
+            await new Promise(r => setTimeout(r, 400)); // Wait for scroll and render
             
-        const captureHeight = Math.min(viewHeight, bottom - currentY);
-        const screenX = currentRect.left + (left - actualScrollX);
-        const screenY = currentRect.top + (currentY - actualScrollY);
-        
-        images.push({
-            dataUrl,
-            crop: {
-                x: screenX,
-                y: screenY,
-                width: width,
-                height: captureHeight
-            },
-            yPos: currentY - top
-        });
-        
-        currentY += viewHeight;
-    }
-    
-    scrollContainer.style.overflow = originalOverflow;
-    
-    showTooltip("Stitching image...");
-    
-    const dpr = window.devicePixelRatio;
-    const canvas = document.createElement('canvas');
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    const ctx = canvas.getContext('2d');
-    
-    for (let i = 0; i < images.length; i++) {
-        const imgData = images[i];
-        const img = new Image();
-        await new Promise((resolve) => {
-            img.onload = resolve;
-            img.src = imgData.dataUrl;
-        });
-
-        const sx = imgData.crop.x * dpr;
-        const sy = imgData.crop.y * dpr;
-        const sWidth = imgData.crop.width * dpr;
-        const sHeight = imgData.crop.height * dpr;
-
-        const dx = 0;
-        const dy = imgData.yPos * dpr;
-        const dWidth = imgData.crop.width * dpr;
-        const dHeight = imgData.crop.height * dpr;
-
-        ctx.drawImage(img, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
-    }
-    
-    canvas.toBlob(async (blob) => {
-        try {
-            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-            showTooltip("Copied to clipboard!");
-            setTimeout(cleanup, 2000);
-        } catch (err) {
-            console.error("Clipboard write failed", err);
-            showTooltip("Error copying to clipboard.");
-            setTimeout(cleanup, 3000);
+            const dataUrl = await new Promise((resolve, reject) => {
+                chrome.runtime.sendMessage({ action: 'take_screenshot' }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        reject(chrome.runtime.lastError);
+                    } else {
+                        resolve(response);
+                    }
+                });
+            });
+            
+            if (!dataUrl) throw new Error("Failed to capture screenshot");
+            
+            const actualScrollY = getScrollTop(scrollContainer);
+            const actualScrollX = getScrollLeft(scrollContainer);
+            
+            const currentRect = scrollContainer === document.scrollingElement 
+                ? { top: 0, left: 0, width: window.innerWidth, height: window.innerHeight }
+                : scrollContainer.getBoundingClientRect();
+                
+            const captureHeight = Math.min(viewHeight, bottom - currentY);
+            const screenX = currentRect.left + (left - actualScrollX);
+            const screenY = currentRect.top + (currentY - actualScrollY);
+            
+            images.push({
+                dataUrl,
+                crop: {
+                    x: screenX,
+                    y: screenY,
+                    width: width,
+                    height: captureHeight
+                },
+                yPos: currentY - top
+            });
+            
+            currentY += viewHeight;
         }
-    }, 'image/png');
+        
+        // Restore scrollbar immediately after capturing
+        scrollContainer.style.overflow = originalOverflow;
+        originalOverflow = null;
+        
+        showTooltip("Stitching image...");
+        
+        const dpr = window.devicePixelRatio;
+        const canvas = document.createElement('canvas');
+        canvas.width = width * dpr;
+        canvas.height = height * dpr;
+        const ctx = canvas.getContext('2d');
+        
+        for (let i = 0; i < images.length; i++) {
+            const imgData = images[i];
+            const img = new Image();
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+                img.src = imgData.dataUrl;
+            });
+
+            const sx = imgData.crop.x * dpr;
+            const sy = imgData.crop.y * dpr;
+            const sWidth = imgData.crop.width * dpr;
+            const sHeight = imgData.crop.height * dpr;
+
+            const dx = 0;
+            const dy = imgData.yPos * dpr;
+            const dWidth = imgData.crop.width * dpr;
+            const dHeight = imgData.crop.height * dpr;
+
+            ctx.drawImage(img, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
+        }
+        
+        canvas.toBlob(async (blob) => {
+            try {
+                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                showTooltip("Copied to clipboard!");
+                setTimeout(cleanup, 2000);
+            } catch (err) {
+                console.error("Clipboard write failed", err);
+                showTooltip("Error copying to clipboard.");
+                setTimeout(cleanup, 3000);
+            }
+        }, 'image/png');
+
+    } catch (error) {
+        console.error("Error during capture process:", error);
+        showTooltip("Error during capture.");
+        setTimeout(cleanup, 3000);
+    }
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -358,6 +392,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'take_screenshot') {
         chrome.tabs.captureVisibleTab(null, { format: 'png' }).then(dataUrl => {
             sendResponse(dataUrl);
+        }).catch(err => {
+            console.error("Capture error:", err);
+            sendResponse(null);
         });
         return true;
     }
