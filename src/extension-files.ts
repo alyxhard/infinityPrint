@@ -245,7 +245,8 @@ function onMouseUp(e) {
 async function captureArea() {
     if (!scrollContainer) return;
     
-    showTooltip("Capturing...");
+    let tt = document.getElementById('scroll-print-tooltip');
+    if (tt) tt.style.display = 'none';
     
     overlay.style.display = 'none';
     selectionBox.style.display = 'none';
