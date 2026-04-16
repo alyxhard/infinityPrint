@@ -18,25 +18,48 @@ export default function App() {
       ctx.beginPath();
       // Use roundRect if available, otherwise fallback to rect
       if (ctx.roundRect) {
-        ctx.roundRect(0, 0, size, size, size * 0.2);
+        ctx.roundRect(0, 0, size, size, size * 0.22);
       } else {
         ctx.rect(0, 0, size, size);
       }
       ctx.fill();
 
-      // Draw dashed border to represent selection box
+      // Draw Chrome logo matching Lucide styling
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = Math.max(1, size * 0.05);
-      ctx.setLineDash([size * 0.1, size * 0.1]);
-      ctx.strokeRect(size * 0.2, size * 0.2, size * 0.6, size * 0.6);
+      ctx.lineWidth = Math.max(1, size * (2 / 24)); // equivalent to 2px stroke in 24px viewbox
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
 
-      // Draw an inner arrow simulating scrolling
-      ctx.fillStyle = '#ffffff';
+      // Helper to map coordinates from 24x24 SVG viewBox to dynamic size
+      const map = (val: number) => (val / 24) * size;
+
+      // Outer circle (<circle cx="12" cy="12" r="10"></circle>)
       ctx.beginPath();
-      ctx.moveTo(size * 0.5, size * 0.65);
-      ctx.lineTo(size * 0.35, size * 0.45);
-      ctx.lineTo(size * 0.65, size * 0.45);
-      ctx.fill();
+      ctx.arc(map(12), map(12), map(10), 0, 2 * Math.PI);
+      ctx.stroke();
+
+      // Inner circle (<circle cx="12" cy="12" r="4"></circle>)
+      ctx.beginPath();
+      ctx.arc(map(12), map(12), map(4), 0, 2 * Math.PI);
+      ctx.stroke();
+
+      // Line 1 (<line x1="21.17" y1="8" x2="12" y2="8"></line>)
+      ctx.beginPath();
+      ctx.moveTo(map(21.17), map(8));
+      ctx.lineTo(map(12), map(8));
+      ctx.stroke();
+
+      // Line 2 (<line x1="3.95" y1="6.06" x2="8.54" y2="14"></line>)
+      ctx.beginPath();
+      ctx.moveTo(map(3.95), map(6.06));
+      ctx.lineTo(map(8.54), map(14));
+      ctx.stroke();
+
+      // Line 3 (<line x1="10.88" y1="21.94" x2="15.46" y2="14"></line>)
+      ctx.beginPath();
+      ctx.moveTo(map(10.88), map(21.94));
+      ctx.lineTo(map(15.46), map(14));
+      ctx.stroke();
 
       canvas.toBlob((blob) => {
         resolve(blob || new Blob([]));
