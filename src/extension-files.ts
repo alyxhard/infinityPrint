@@ -1,15 +1,15 @@
 export const manifestJson = `{
   "manifest_version": 3,
   "name": "Scroll Print Area",
-  "version": "1.1",
-  "description": "Selecione uma área, faça scroll para esticar e tire um print longo de qualquer container.",
-  "permissions": ["activeTab", "scripting", "storage"],
+  "version": "1.2",
+  "description": "Select an area, scroll to stretch, and release to copy a long screenshot to your clipboard.",
+  "permissions": ["activeTab", "scripting", "clipboardWrite"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Capturar Área"
+    "default_title": "Capture Area"
   }
 }`;
 
@@ -30,42 +30,29 @@ export const contentCss = `#scroll-print-overlay {
   z-index: 1000000;
   pointer-events: none;
 }
-.resize-handle {
-  position: absolute;
-  bottom: -5px;
+#scroll-print-tooltip {
+  position: fixed;
+  top: 20px;
   left: 50%;
   transform: translateX(-50%);
-  width: 20px;
-  height: 10px;
-  background: #00a8ff;
-  border-radius: 5px;
-  cursor: ns-resize;
-  pointer-events: auto;
-}
-#scroll-print-capture-btn {
-  position: fixed;
-  z-index: 1000001;
-  background: #00a8ff;
+  background: #2d3436;
   color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
+  padding: 10px 20px;
+  border-radius: 8px;
   font-family: sans-serif;
+  font-size: 14px;
   font-weight: bold;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-}
-#scroll-print-capture-btn:hover {
-  background: #0097e6;
+  z-index: 1000002;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  pointer-events: none;
 }`;
 
-export const contentJs = `let overlay, selectionBox, captureBtn;
+export const contentJs = `let overlay, selectionBox;
 let scrollContainer = null;
 let startClientX, startClientY;
 let startScrollX, startScrollY;
 let currentClientX, currentClientY;
 let isDrawing = false;
-let isResizing = false;
 let scrollInterval = null;
 
 function getScrollTop(el) { return el === document.scrollingElement ? window.scrollY : el.scrollTop; }
@@ -104,24 +91,30 @@ function init() {
 function cleanup() {
     if (overlay) overlay.remove();
     if (selectionBox) selectionBox.remove();
-    if (captureBtn) captureBtn.remove();
+    const tt = document.getElementById('scroll-print-tooltip');
+    if (tt) tt.remove();
     if (scrollInterval) clearInterval(scrollInterval);
-    overlay = selectionBox = captureBtn = null;
+    overlay = selectionBox = null;
     scrollInterval = null;
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
     window.removeEventListener('scroll', onScroll, true);
 }
 
-function onMouseDown(e) {
-    if (e.target.classList && e.target.classList.contains('resize-handle')) {
-        isResizing = true;
-        return;
+function showTooltip(text) {
+    let tt = document.getElementById('scroll-print-tooltip');
+    if (!tt) {
+        tt = document.createElement('div');
+        tt.id = 'scroll-print-tooltip';
+        document.body.appendChild(tt);
     }
-    if (selectionBox) selectionBox.remove();
-    if (captureBtn) captureBtn.remove();
+    tt.innerText = text;
+    tt.style.display = 'block';
+}
 
-    // Encontra o container com scroll correto (ex: chat)
+function onMouseDown(e) {
+    if (selectionBox) selectionBox.remove();
+
     overlay.style.display = 'none';
     const target = document.elementFromPoint(e.clientX, e.clientY);
     scrollContainer = getScrollableParent(target);
@@ -144,7 +137,7 @@ function onMouseDown(e) {
 }
 
 function onMouseMove(e) {
-    if (!isDrawing && !isResizing) return;
+    if (!isDrawing) return;
     currentClientX = e.clientX;
     currentClientY = e.clientY;
     
@@ -153,7 +146,7 @@ function onMouseMove(e) {
 }
 
 function onScroll(e) {
-    if ((isDrawing || isResizing || selectionBox) && scrollContainer) {
+    if ((isDrawing || selectionBox) && scrollContainer) {
         if (e.target === scrollContainer || (scrollContainer === document.scrollingElement && (e.target === document || e.target === window))) {
             updateSelection();
         }
@@ -166,18 +159,11 @@ function updateSelection() {
     const currentScrollX = getScrollLeft(scrollContainer);
     const currentScrollY = getScrollTop(scrollContainer);
     
-    // A origem acompanha o scroll do container
     const originScreenX = startClientX - (currentScrollX - startScrollX);
     const originScreenY = startClientY - (currentScrollY - startScrollY);
     
     let endScreenX = currentClientX;
     let endScreenY = currentClientY;
-    
-    if (isResizing) {
-        endScreenX = originScreenX + parseFloat(selectionBox.dataset.origWidth || 0);
-    } else {
-        selectionBox.dataset.origWidth = Math.abs(originScreenX - endScreenX);
-    }
 
     const left = Math.min(originScreenX, endScreenX);
     const top = Math.min(originScreenY, endScreenY);
@@ -188,11 +174,6 @@ function updateSelection() {
     selectionBox.style.top = top + 'px';
     selectionBox.style.width = width + 'px';
     selectionBox.style.height = height + 'px';
-    
-    if (captureBtn) {
-        captureBtn.style.left = (left + 10) + 'px';
-        captureBtn.style.top = (top + height + 10) + 'px';
-    }
 }
 
 function checkAutoScroll(clientX, clientY) {
@@ -227,47 +208,28 @@ function checkAutoScroll(clientX, clientY) {
 }
 
 function onMouseUp(e) {
-    if (isDrawing || isResizing) {
+    if (isDrawing) {
         isDrawing = false;
-        isResizing = false;
         if (scrollInterval) {
             clearInterval(scrollInterval);
             scrollInterval = null;
         }
-        addHandlesAndButton();
+        
+        if (selectionBox && parseFloat(selectionBox.style.width) > 10 && parseFloat(selectionBox.style.height) > 10) {
+            captureArea();
+        } else {
+            cleanup();
+        }
     }
-}
-
-function addHandlesAndButton() {
-    if (!selectionBox) return;
-    
-    const oldHandle = selectionBox.querySelector('.resize-handle');
-    if (oldHandle) oldHandle.remove();
-
-    const handle = document.createElement('div');
-    handle.className = 'resize-handle';
-    handle.addEventListener('mousedown', (e) => {
-        isResizing = true;
-        e.stopPropagation();
-    });
-    selectionBox.appendChild(handle);
-
-    if (!captureBtn) {
-        captureBtn = document.createElement('button');
-        captureBtn.id = 'scroll-print-capture-btn';
-        captureBtn.innerText = '📸 Capturar Área';
-        captureBtn.onclick = captureArea;
-        document.body.appendChild(captureBtn);
-    }
-    updateSelection();
 }
 
 async function captureArea() {
     if (!scrollContainer) return;
     
+    showTooltip("Capturing...");
+    
     overlay.style.display = 'none';
     selectionBox.style.display = 'none';
-    captureBtn.style.display = 'none';
     
     const currentScrollX = getScrollLeft(scrollContainer);
     const currentScrollY = getScrollTop(scrollContainer);
@@ -329,16 +291,47 @@ async function captureArea() {
     }
     
     scrollContainer.style.overflow = originalOverflow;
-    cleanup();
     
-    chrome.runtime.sendMessage({
-        action: 'open_result',
-        data: {
-            images,
-            bounds: { width, height },
-            dpr: window.devicePixelRatio
+    showTooltip("Stitching image...");
+    
+    const dpr = window.devicePixelRatio;
+    const canvas = document.createElement('canvas');
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    const ctx = canvas.getContext('2d');
+    
+    for (let i = 0; i < images.length; i++) {
+        const imgData = images[i];
+        const img = new Image();
+        await new Promise((resolve) => {
+            img.onload = resolve;
+            img.src = imgData.dataUrl;
+        });
+
+        const sx = imgData.crop.x * dpr;
+        const sy = imgData.crop.y * dpr;
+        const sWidth = imgData.crop.width * dpr;
+        const sHeight = imgData.crop.height * dpr;
+
+        const dx = 0;
+        const dy = imgData.yPos * dpr;
+        const dWidth = imgData.crop.width * dpr;
+        const dHeight = imgData.crop.height * dpr;
+
+        ctx.drawImage(img, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
+    }
+    
+    canvas.toBlob(async (blob) => {
+        try {
+            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+            showTooltip("Copied to clipboard!");
+            setTimeout(cleanup, 2000);
+        } catch (err) {
+            console.error("Clipboard write failed", err);
+            showTooltip("Error copying to clipboard.");
+            setTimeout(cleanup, 3000);
         }
-    });
+    }, 'image/png');
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -367,72 +360,5 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             sendResponse(dataUrl);
         });
         return true;
-    } else if (request.action === 'open_result') {
-        chrome.storage.local.set({ captureData: request.data }, () => {
-            chrome.tabs.create({ url: 'result.html' });
-        });
     }
-});`;
-
-export const resultHtml = `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Resultado da Captura</title>
-    <style>
-        body { background: #1e1e1e; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
-        canvas { max-width: 100%; border: 1px solid #333; box-shadow: 0 4px 12px rgba(0,0,0,0.5); margin-top: 20px; }
-        .header { display: flex; gap: 10px; margin-bottom: 20px; align-items: center; }
-        button { background: #00a8ff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; }
-        button:hover { background: #0097e6; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h2>Captura Concluída</h2>
-        <button id="downloadBtn">Baixar Imagem</button>
-    </div>
-    <canvas id="resultCanvas"></canvas>
-    <script src="result.js"></script>
-</body>
-</html>`;
-
-export const resultJs = `chrome.storage.local.get(['captureData'], async (result) => {
-    if (!result.captureData) return;
-    
-    const { images, bounds, dpr } = result.captureData;
-    const canvas = document.getElementById('resultCanvas');
-    const ctx = canvas.getContext('2d');
-
-    canvas.width = bounds.width * dpr;
-    canvas.height = bounds.height * dpr;
-
-    for (let i = 0; i < images.length; i++) {
-        const imgData = images[i];
-        const img = new Image();
-        
-        await new Promise((resolve) => {
-            img.onload = resolve;
-            img.src = imgData.dataUrl;
-        });
-
-        const sx = imgData.crop.x * dpr;
-        const sy = imgData.crop.y * dpr;
-        const sWidth = imgData.crop.width * dpr;
-        const sHeight = imgData.crop.height * dpr;
-
-        const dx = 0;
-        const dy = imgData.yPos * dpr;
-        const dWidth = imgData.crop.width * dpr;
-        const dHeight = imgData.crop.height * dpr;
-
-        ctx.drawImage(img, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
-    }
-
-    document.getElementById('downloadBtn').addEventListener('click', () => {
-        const link = document.createElement('a');
-        link.download = 'scroll-capture-' + Date.now() + '.png';
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-    });
 });`;
