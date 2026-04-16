@@ -1,0 +1,6 @@
+{
+  "name": "Scroll Print Extension Generator",
+  "description": "Gera uma extensão do Chrome para tirar prints longos de áreas selecionadas com scroll.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
