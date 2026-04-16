@@ -274,9 +274,13 @@ async function captureArea() {
     scrollContainer.style.overflow = 'hidden';
     
     try {
-        while (currentY < bottom) {
+        let captureCount = 0;
+        const MAX_CAPTURES = 40; // Prevent infinite loops or massive memory usage
+        
+        while (currentY < bottom && captureCount < MAX_CAPTURES) {
+            captureCount++;
             setScrollTop(scrollContainer, currentY);
-            await new Promise(r => setTimeout(r, 400)); // Wait for scroll and render
+            await new Promise(r => setTimeout(r, 500)); // Wait for scroll and render
             
             const dataUrl = await new Promise((resolve, reject) => {
                 chrome.runtime.sendMessage({ action: 'take_screenshot' }, (response) => {
@@ -321,11 +325,23 @@ async function captureArea() {
         
         showTooltip("Stitching image...");
         
-        const dpr = window.devicePixelRatio;
+        // Calculate scale to prevent canvas/clipboard limits
+        let scale = window.devicePixelRatio || 1;
+        const MAX_CANVAS_DIMENSION = 12000; // Safe limit for clipboard and canvas
+        
+        if (height * scale > MAX_CANVAS_DIMENSION) {
+            scale = MAX_CANVAS_DIMENSION / height;
+        }
+        if (width * scale > MAX_CANVAS_DIMENSION) {
+            scale = Math.min(scale, MAX_CANVAS_DIMENSION / width);
+        }
+        
         const canvas = document.createElement('canvas');
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
+        canvas.width = width * scale;
+        canvas.height = height * scale;
         const ctx = canvas.getContext('2d');
+        
+        const originalDpr = window.devicePixelRatio || 1;
         
         for (let i = 0; i < images.length; i++) {
             const imgData = images[i];
@@ -336,28 +352,33 @@ async function captureArea() {
                 img.src = imgData.dataUrl;
             });
 
-            const sx = imgData.crop.x * dpr;
-            const sy = imgData.crop.y * dpr;
-            const sWidth = imgData.crop.width * dpr;
-            const sHeight = imgData.crop.height * dpr;
+            const sx = imgData.crop.x * originalDpr;
+            const sy = imgData.crop.y * originalDpr;
+            const sWidth = imgData.crop.width * originalDpr;
+            const sHeight = imgData.crop.height * originalDpr;
 
             const dx = 0;
-            const dy = imgData.yPos * dpr;
-            const dWidth = imgData.crop.width * dpr;
-            const dHeight = imgData.crop.height * dpr;
+            const dy = imgData.yPos * scale;
+            const dWidth = imgData.crop.width * scale;
+            const dHeight = imgData.crop.height * scale;
 
             ctx.drawImage(img, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
         }
         
         canvas.toBlob(async (blob) => {
+            if (!blob) {
+                showTooltip("Image too large! Try a smaller area.");
+                setTimeout(cleanup, 4000);
+                return;
+            }
             try {
                 await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
                 showTooltip("Copied to clipboard!");
                 setTimeout(cleanup, 2000);
             } catch (err) {
                 console.error("Clipboard write failed", err);
-                showTooltip("Error copying to clipboard.");
-                setTimeout(cleanup, 3000);
+                showTooltip("Image too large for clipboard.");
+                setTimeout(cleanup, 4000);
             }
         }, 'image/png');
 
