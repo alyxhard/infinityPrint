@@ -27,7 +27,7 @@ export default function App() {
         
         <h1 className="text-2xl font-bold mb-2">Scroll Print Area</h1>
         <p className="text-gray-500 mb-8">
-          Baixe o arquivo .zip, extraia em uma pasta e carregue no Chrome.
+          Download the .zip file, extract it, and load it into Chrome.
         </p>
 
         <button
@@ -35,19 +35,19 @@ export default function App() {
           className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-xl font-bold text-lg transition-all hover:scale-[1.02] active:scale-[0.98] shadow-md cursor-pointer"
         >
           <Download size={24} />
-          Baixar Extensão (.zip)
+          Download Extension (.zip)
         </button>
 
         <div className="mt-8 text-left bg-blue-50 p-5 rounded-xl border border-blue-100">
           <h3 className="font-semibold text-blue-900 flex items-center gap-2 mb-3">
             <CheckCircle size={18} className="text-blue-600" />
-            Como instalar:
+            How to install:
           </h3>
           <ol className="text-sm text-blue-800 space-y-3 ml-5 list-decimal marker:font-bold">
-            <li>Extraia o arquivo <code className="bg-blue-100 px-1 rounded">.zip</code> baixado em uma pasta.</li>
-            <li>Acesse <code className="bg-blue-100 px-1 rounded font-bold">chrome://extensions</code> no seu navegador.</li>
-            <li>Ative o <b>Modo do desenvolvedor</b> no canto superior direito.</li>
-            <li>Clique em <b>Carregar sem compactação</b> e selecione a pasta que você extraiu.</li>
+            <li>Extract the downloaded <code className="bg-blue-100 px-1 rounded">.zip</code> archive into a folder.</li>
+            <li>Go to <code className="bg-blue-100 px-1 rounded font-bold">chrome://extensions</code> in your browser.</li>
+            <li>Enable <b>Developer mode</b> in the top right corner.</li>
+            <li>Click <b>Load unpacked</b> and select the folder you just extracted.</li>
           </ol>
         </div>
       </div>

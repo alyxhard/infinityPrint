@@ -47,7 +47,11 @@ export const contentCss = `#scroll-print-overlay {
   pointer-events: none;
 }`;
 
-export const contentJs = `let overlay, selectionBox;
+export const contentJs = `(() => {
+    if (window.__scrollPrintInjected) return;
+    window.__scrollPrintInjected = true;
+
+let overlay, selectionBox;
 let scrollContainer = null;
 let startClientX, startClientY;
 let startScrollX, startScrollY;
@@ -394,7 +398,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         init();
         sendResponse({status: 'ok'});
     }
-});`;
+});
+})();`;
 
 export const backgroundJs = `chrome.action.onClicked.addListener((tab) => {
     chrome.scripting.insertCSS({
