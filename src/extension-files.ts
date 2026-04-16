@@ -328,8 +328,6 @@ async function captureArea() {
         scrollContainer.style.overflow = originalOverflow;
         originalOverflow = null;
         
-        showTooltip("Stitching image...");
-        
         // Calculate scale to prevent canvas/clipboard limits
         let scale = window.devicePixelRatio || 1;
         const MAX_CANVAS_DIMENSION = 12000; // Safe limit for clipboard and canvas
