@@ -5,11 +5,21 @@ export const manifestJson = `{
   "description": "Select an area, scroll to stretch, and release to copy a long screenshot to your clipboard.",
   "permissions": ["activeTab", "scripting", "clipboardWrite"],
   "host_permissions": ["<all_urls>"],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "Capture Area"
+    "default_title": "Capture Area",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
   }
 }`;
 
@@ -91,6 +101,14 @@ function init() {
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('keydown', onKeyDown, true);
+}
+
+function onKeyDown(e) {
+    if (e.key === 'Escape') {
+        e.preventDefault();
+        cleanup();
+    }
 }
 
 function cleanup() {
@@ -114,6 +132,7 @@ function cleanup() {
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
     window.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('keydown', onKeyDown, true);
 }
 
 function showTooltip(text) {
@@ -424,3 +443,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 });`;
+
+export const readmeMd = `# Scroll Print Area - Chrome Extension
+
+## What is it?
+Scroll Print Area is a lightweight Chrome extension that allows you to take long, scrolling screenshots of specific areas on a webpage (such as a chat box, a specific column, or a code block) and copies the stitched image directly to your clipboard.
+
+## How to Install
+1. Download the \`.zip\` file from the generator.
+2. Extract the archive into a folder on your computer.
+3. Open Chrome and navigate to \`chrome://extensions\`.
+4. Turn on **Developer mode** (toggle switch in the top right corner).
+5. Click the **Load unpacked** button and select the folder you just extracted.
+
+## How to Use
+1. **Activate:** Click the extension icon in your Chrome toolbar. The screen will slightly dim and your cursor will turn into a crosshair.
+2. **Select:** Click and hold the left mouse button to start drawing a rectangle over the content you want to capture.
+3. **Scroll to Stretch:** While still holding the mouse button down, use your mouse wheel to scroll down (or up). The selection box will stretch and follow the content.
+4. **Capture:** Release the mouse button. The extension will automatically scroll through your selection, take multiple screenshots, stitch them together into a single long image, and copy it to your clipboard.
+5. **Paste:** You will see a small "Copied to clipboard!" tooltip when it's done. You can now press \`Ctrl+V\` (or \`Cmd+V\` on Mac) to paste your long screenshot anywhere.
+
+## Features
+- **Sub-scrolling Support:** Works perfectly on nested scrollable elements like chat boxes or sidebars, not just the main page.
+- **Direct to Clipboard:** No annoying popup tabs or download prompts. The image goes straight to your clipboard.
+- **Silent Capture:** Tooltips are hidden during the actual capture process to ensure your final image is clean.
+- **Smart Downscaling:** Automatically scales down massive captures to ensure they don't break clipboard memory limits.
+- **Escape to Cancel:** Press the \`ESC\` key at any time to instantly cancel the operation and return normal page scrolling.`;
